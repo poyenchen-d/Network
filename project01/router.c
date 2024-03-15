@@ -7,75 +7,110 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 
+#include <iostream>
+#include <fstream>
+#include <cstring>
+#include <unistd.h>
+#include <cstdint>
+#include <cstdlib>
+#include <iomanip>
+#include <string>
+#include <cstring>
+
+using namespace std;
+
+#define MTU 1500
+#define BUFF_LEN 10000  //buffer size
+#define PACKET_SIZE 1518
 #define CLIENT_IP "127.0.0.1"
 #define SERVER_IP "127.0.0.2"
+#define SERVER_PORT 9000
 #define ROUTER_PORT 9002
 #define CLIENT_PORT 9003
-#define SERVER_PORT 8082
 
-#define SA struct sockaddr
+int main() {
+    // from client
+    int router_fd, new_socket;
+    struct sockaddr_in address;
+    int addrlen = sizeof(address);
+    char buffer[PACKET_SIZE] = {0};
 
-int main()
-{
-    int router_fd, client_fd, server_fd;
-    struct sockaddr_in router_addr, client_addr, server_addr;
-
-    // Create router socket
-    router_fd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (router_fd < 0)
-    {
-        perror("Socket creation failed");
+    // Socket creation
+    if ((router_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+        perror("Socket creation error");
         exit(EXIT_FAILURE);
     }
 
-    // Bind router socket to router port
-    router_addr.sin_family = AF_INET;
-    router_addr.sin_addr.s_addr = INADDR_ANY;
-    router_addr.sin_port = htons(ROUTER_PORT);
-    if (bind(router_fd, (SA *)&router_addr, sizeof(router_addr)) < 0)
-    {
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(ROUTER_PORT);
+
+    // port
+    if (bind(router_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
         perror("Bind failed");
         exit(EXIT_FAILURE);
     }
 
-    socklen_t len;
-    char buffer[1024];
-
-    // Router loop
-    while (1)
-    {
-        len = sizeof(client_addr);
-        recvfrom(router_fd, buffer, sizeof(buffer), 0, (SA *)&client_addr, &len);
-
-        if (strcmp(buffer, "EXIT") == 0)
-        {
-            printf("Router shutting down\n");
-            break;
-        }
-
-        printf("Received packet from client\n");
-
-        if (client_fd == 0)
-        {
-            // Create client socket if not already created
-            client_fd = socket(AF_INET, SOCK_DGRAM, 0);
-        }
-
-        // Send packet to server
-        sendto(client_fd, buffer, sizeof(buffer), 0, (SA *)&server_addr, sizeof(server_addr));
-
-        len = sizeof(server_addr);
-        recvfrom(client_fd, buffer, sizeof(buffer), 0, (SA *)&server_addr, &len);
-
-        printf("Received packet from server\n");
-
-        // Send packet back to client
-        sendto(router_fd, buffer, sizeof(buffer), 0, (SA *)&client_addr, sizeof(client_addr));
+    // listen 
+    if (listen(router_fd, 3) < 0) {
+        perror("Listen failed");
+        exit(EXIT_FAILURE);
     }
 
+    // Waiting for connection
+    if ((new_socket = accept(router_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
+        perror("Accept failed");
+        exit(EXIT_FAILURE);
+    }
+
+    while (1) {
+        // Clear buffer
+        memset(buffer, 0, PACKET_SIZE);
+
+        // Read from client
+        read(new_socket, buffer, PACKET_SIZE);
+        printf("-----server receive-----\n"); 
+         for(int i=60;i<64;i++){
+    	cout<<buffer[i];
+    }
+    cout<<endl<<endl;
+    
+        printf("-----buffer-----\n"); 
+
+        // to server
+        // Create socket
+        int server_fd;
+        struct sockaddr_in server_addr;
+        server_fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (server_fd == -1) {
+            perror("Socket creation failed");
+            exit(EXIT_FAILURE);
+        }
+
+        // Configure server address
+        server_addr.sin_family = AF_INET;
+        server_addr.sin_port = htons(SERVER_PORT);
+        server_addr.sin_addr.s_addr = inet_addr(SERVER_IP);
+
+        // Connect to server
+        if (connect(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+            perror("Connection to server failed");
+            exit(EXIT_FAILURE);
+        }
+
+        printf("Connected to server\n");
+
+        // Send to server
+        send(server_fd, buffer, PACKET_SIZE , 0);
+
+        // Close socket
+        close(server_fd);
+    }
+
+    // Close socket
+    close(new_socket);
     close(router_fd);
-    close(client_fd);
-    close(server_fd);
 
     return 0;
 }
+
